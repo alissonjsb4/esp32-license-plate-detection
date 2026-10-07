@@ -1,33 +1,28 @@
-# Frontend de Apresentação
+# Demo frontend
 
-Aplicação **web local** (offline) que demonstra as **três modalidades** exigidas
-(imagem, vídeo e tempo real) usando o **mesmo modelo** embarcado na ESP, mas rodando no
-PC via **LiteRT** (~4 ms/inferência). A segmentação usa **OpenCV**.
+Local, offline web app that demonstrates the three required modes (image, video and real time) with the same model embedded on the ESP32, running on the PC through LiteRT (about 4 ms per inference). Segmentation uses OpenCV.
 
-## Dependências
+## Usage
+
 ```bash
 pip install ai-edge-litert opencv-python pillow pyserial numpy
+python frontend_apresentacao.py          # default port 8000
+python frontend_apresentacao.py 9000     # another port
 ```
-> `ai-edge-litert` é o runtime do TensorFlow Lite (funciona inclusive no Python 3.14).
 
-## Como rodar
-```bash
-python frontend_apresentacao.py          # porta padrão 8000
-python frontend_apresentacao.py 9000     # outra porta web
-```
-Depois abra **http://localhost:8000** no navegador.
+Then open http://localhost:8000. `ai-edge-litert` is the TensorFlow Lite runtime and also works on Python 3.14.
 
-## Abas
-| Aba | O que faz |
+## Tabs
+
+| Tab | What it does |
 |---|---|
-| **Imagem** | Escolha/arraste uma imagem → detecção (bbox + mapa de confiança da grade) + segmentação dos caracteres. Modos RGB e *gray3*. |
-| **Vídeo** | Seleciona um vídeo de `videos_teste/` → detecção quadro a quadro ao vivo (MJPEG) com FPS. |
-| **Tempo real** | Conecta na **ESP** pela porta serial (ex.: `COM3`) e mostra a confiança ao vivo (gráfico tempo × confiança), barra de progresso da inferência e o log de eventos. |
-| **Métricas** | Tabelas com os resultados reais (5 execuções, PC × ESP, efeito das negativas) — ótimas para prints. |
+| Image | Pick or drop an image: detection (box and grid confidence map) and character segmentation, in RGB or gray3 mode |
+| Video | Pick a video from `videos_teste/`: frame-by-frame detection streamed as MJPEG, with FPS |
+| Real time | Connects to the ESP32 over serial (for example `COM3`) and shows the live confidence over time, the inference progress and the event log |
+| Metrics | Tables with the measured results (5 runs, PC versus ESP32, effect of the negative images) |
 
-## Observações
-- A aba **Tempo real** abre a porta serial e **reinicia a ESP** ao conectar; o primeiro
-  frame leva ~2 min (inferência embarcada). Garanta o Wi-Fi da ESP ligado.
-- O modelo usado é `modelo_grid_224_alpha_0p5_int8.tflite` (nesta mesma pasta) — o mesmo
-  que foi embarcado na placa.
-- Tudo é servido localmente, **sem internet**, para funcionar na hora da apresentação.
+## Notes
+
+- The real-time tab opens the serial port, which resets the ESP32; the first frame takes about two minutes. The ESP32's Wi-Fi network must be up.
+- The model is `modelo_grid_224_alpha_0p5_int8.tflite`, in this folder, the same file embedded on the board.
+- Everything is served locally, with no internet, so the demo works anywhere.

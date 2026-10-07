@@ -1,134 +1,91 @@
-# Detecção de Placas Veiculares com MobileNetV1 embarcado em ESP32-S3
+# esp32-license-plate-detection
 
-Trabalho final da disciplina **TI0147 — Fundamentos de Processamento Digital de Imagens**
-Professor: **Paulo Cesar Cortez**
-
-Sistema completo de **detecção de placas de carro** usando **MobileNetV1** com uma cabeça
-de *detector por grade* (saída `7×7×5`), treinado em TensorFlow/Keras, **quantizado em INT8**
-e **embarcado em uma ESP32-S3** com câmera OV5640. Inclui pós-processamento (filtragem por
-confiança e **segmentação dos caracteres**) e um **frontend** que demonstra as três
-modalidades exigidas: **imagem, vídeo e tempo real**.
+License-plate detection with MobileNetV1 running on an ESP32-S3. The network (MobileNetV1, α = 0.5, with a grid detection head and a 7×7×5 output) is trained in TensorFlow/Keras, quantized to INT8 and embedded on an ESP32-S3 with an OV5640 camera. Post-processing filters by confidence and segments the plate characters, and a local web frontend demonstrates the three modes the course required: image, video and real time. Final project for Digital Image Processing (TI0147) at the Federal University of Ceará, taught by Prof. Paulo Cesar Cortez, team of four.
 
 ![Pipeline](docs/imagens/pipeline.png)
 
----
+## Usage
 
-## Equipe
-| Integrante | Frente principal |
-|---|---|
-| Carlos Vinícius dos Santos Mesquita | Segmentação / relatório / slides |
-| Alisson Jaime Sales Barros | Embarcamento na ESP / testes / frontend |
-| Victor Guedes Alves Teixeira | Dataset / treino / modelo / segmentação |
-| Kaique Ferreira Braga Silva | Firmware / integração / bot Telegram |
+Frontend on a PC, running the same INT8 model through LiteRT:
 
----
+    pip install ai-edge-litert opencv-python pillow pyserial numpy
+    python frontend/frontend_apresentacao.py     # then open http://localhost:8000
 
-## Estrutura do repositório
-```
-.
-├── README.md                  ← este arquivo
-├── relatorio/                 ← RELATÓRIO FINAL (artigo científico)
-│   ├── Relatorio_Final.pdf        ← PDF pronto
-│   ├── Relatorio_Final.tex        ← fonte LaTeX (Overleaf-ready)
-│   ├── figuras/                   ← figuras do relatório
-│   ├── gerar_figuras.py           ← gera as figuras automaticamente do vídeo
-│   └── gerar_figuras_extras.py    ← figuras extras (pré-proc, Otsu, tempos, campo)
-├── firmware_esp32/            ← CÓDIGO QUE RODA NA ESP (Arduino)
-│   ├── Identificador_de_placas/   ← sketch (.ino + modelo .h + partições)
-│   └── README.md                  ← como gravar na placa
-├── frontend/                 ← APLICAÇÃO DE APRESENTAÇÃO (Python, web local)
-│   ├── frontend_apresentacao.py   ← app com 3 abas (imagem/vídeo/tempo real)
-│   ├── modelo_grid_224_alpha_0p5_int8.tflite
-│   └── README.md                  ← como rodar
-├── modelo_treinamento/       ← TREINO E EXPORTAÇÃO DO MODELO
-│   ├── Trabalho_Final_PDI_MobileNetV1_Grid_Detector.ipynb  ← notebook do Colab
-│   └── README.md                  ← link do Colab, como treinar/exportar
-├── videos_teste/             ← vídeos de teste
-├── docs/                     ← enunciado e imagens
-│   ├── enunciado_trabalho.pdf
-│   └── imagens/
-└── _arquivos_antigos/        ← versões antigas (não usadas; mantidas por histórico)
-```
+Flashing the board: `firmware_esp32/README.md`. Training and export: `modelo_treinamento/README.md`. Full report, in Portuguese: `relatorio/Relatorio_Final.pdf`.
 
----
+## How it works
 
-## Início rápido
-- **Ler o relatório:** [`relatorio/Relatorio_Final.pdf`](relatorio/Relatorio_Final.pdf)
-- **Rodar o frontend (PC):** veja [`frontend/README.md`](frontend/README.md)
-  ```bash
-  pip install ai-edge-litert opencv-python pillow pyserial numpy
-  python frontend/frontend_apresentacao.py
-  # abra http://localhost:8000
-  ```
-- **Gravar na ESP:** veja [`firmware_esp32/README.md`](firmware_esp32/README.md)
-- **Treinar/exportar o modelo:** veja [`modelo_treinamento/README.md`](modelo_treinamento/README.md)
+1. Capture: the OV5640 delivers a JPEG.
+2. Pre-processing: resize to 224×224 and normalize to [-1, 1].
+3. Inference: each cell of the 7×7 grid predicts an objectness score and a box (cx, cy, w, h).
+4. Decoding: the cell with the highest confidence gives the bounding box.
+5. Filtering: a detection fires only when the confidence stays above the operating threshold for 2 consecutive frames. The threshold is calibrated in the field between 0.85 and 0.95 depending on the lighting, always above the no-plate range of 0.42-0.58; the firmware ships with 0.85.
+6. Segmentation: the characters are isolated with OpenCV (CLAHE, black-hat, Otsu).
+7. Output: the annotated image goes to Telegram from the ESP32, or to the frontend on the PC.
 
----
+## Results
 
-## Como funciona
-1. **Captura** — câmera OV5640 fornece um JPEG.
-2. **Pré-processamento** — redimensiona para `224×224` e normaliza para `[-1,1]`.
-3. **Inferência** — MobileNetV1 (α=0,5) com cabeça de grade `7×7×5`: cada célula prevê
-   uma confiança (*objectness*) e a caixa `(cx, cy, w, h)`.
-4. **Decodificação** — escolhe a **célula de maior confiança** e reconstrói a *bounding box*.
-5. **Filtragem** — só dispara se a confiança ≥ **limiar operacional** por **2 frames**
-   consecutivos. O limiar é calibrável em campo (**0,85–0,95**, conforme iluminação
-   da cena; sempre acima da faixa sem placa, 0,42–0,58) — valor atual do firmware: 0,85.
-6. **Segmentação** — isola os caracteres da placa com OpenCV (CLAHE + BlackHat + Otsu).
-7. **Saída** — envia a imagem anotada ao **Telegram** (na ESP) ou exibe no **frontend** (PC).
+Detection on a still image, with the grid confidence map:
 
-O **mesmo modelo** roda na ESP32-S3 (embarcado, INT8) e no PC (LiteRT), permitindo a
-comparação de desempenho exigida no enunciado.
+![Detection](docs/imagens/fig_deteccao.png)
 
----
+Character segmentation:
 
-## Resultados (medidos)
+![Segmentation](docs/imagens/fig_segmentacao.png)
 
-**Detecção em imagem** — *bounding box* e mapa de confiança da grade:
-![Detecção](docs/imagens/fig_deteccao.png)
+Metrics over 5 training runs (mean ± standard deviation):
 
-**Segmentação dos caracteres** (pós-processamento, OpenCV):
-![Segmentação](docs/imagens/fig_segmentacao.png)
-
-**Métricas em 5 execuções** (média ± desvio):
-
-| Métrica | Base 1 | Base 2 | Mix |
+| Metric | Base 1 | Base 2 | Mix |
 |---|---|---|---|
-| IoU médio | 0,768 ± 0,002 | 0,543 ± 0,030 | 0,731 ± 0,005 |
-| Recall (IoU≥0,5) | 0,973 | 0,667 | 0,922 |
-| F1@0,5 | 0,983 | 0,750 | 0,944 |
+| Mean IoU | 0.768 ± 0.002 | 0.543 ± 0.030 | 0.731 ± 0.005 |
+| Recall (IoU ≥ 0.5) | 0.973 | 0.667 | 0.922 |
+| F1 at IoU 0.5 | 0.983 | 0.750 | 0.944 |
 
-**Comparação de plataformas** (mesmo modelo):
+Same model on both platforms:
 
-| Plataforma | Tempo/inferência | Tamanho |
+| Platform | Time per inference | Size |
 |---|---|---|
-| TFLite INT8 — PC (LiteRT) | ~4–7 ms | 2,35 MB |
-| TFLite INT8 — **ESP32-S3** | ~117 s | 2,35 MB |
+| TFLite INT8 on a PC (LiteRT) | 4-7 ms | 2.35 MB |
+| TFLite INT8 on the ESP32-S3 | about 117 s | 2.35 MB |
 
-A quantização INT8 **preservou a qualidade** (IoU ≈ igual ao Keras). O acréscimo de
-imagens **negativas** levou os falsos positivos a **0/4** no limiar 0,95. Medições na
-ESP: placa real bem enquadrada → **0,98–0,99**; cena sem placa → **0,42–0,58**.
+INT8 quantization kept the quality (IoU about the same as the Keras model). Adding negative images brought false positives to 0 of 4 at the 0.95 threshold. Measured on the ESP32, a well-framed real plate scores 0.98-0.99 and a scene without a plate scores 0.42-0.58.
 
----
+## Notes
 
-## Modalidades demonstradas (enunciado)
-- **Imagem** — detecção + segmentação sobre imagens estáticas (aba *Imagem* do frontend).
-- **Vídeo** — detecção quadro a quadro com FPS (aba *Vídeo*).
-- **Tempo real** — câmera OV5640 acoplada à ESP32-S3, inferência embarcada e envio
-  automático ao Telegram (aba *Tempo real*).
+- One model file for both targets, so the PC versus ESP32 comparison isolates the platform.
+- The ESP32 takes about two minutes per frame because of the model size, the reference kernels of TFLite Micro and running from PSRAM.
+- Two consecutive frames above the threshold before firing trades latency for fewer false alarms.
 
----
+## Team
 
-## Hardware e ambiente
-- **Placa:** ESP32-S3 (16 MB flash, 8 MB PSRAM OPI, CPU 240 MHz) + câmera **OV5640**.
-- **Embarcado:** Arduino-ESP32 3.3.8 / ESP-IDF 5.5, biblioteca `TensorFlowLite_ESP32`.
-- **Treino:** Google Colab (TensorFlow 2.20.0, Python 3.12, GPU NVIDIA Tesla T4).
-- **Frontend/PC:** Python 3, `ai-edge-litert` + OpenCV.
+| Member | Main work |
+|---|---|
+| Carlos Vinícius dos Santos Mesquita | segmentation, report, slides |
+| Alisson Jaime Sales Barros | embedding on the ESP32, tests, frontend |
+| Victor Guedes Alves Teixeira | dataset, training, model, segmentation |
+| Kaique Ferreira Braga Silva | firmware, integration, Telegram bot |
 
----
+## Hardware and environment
+
+- Board: ESP32-S3 (16 MB flash, 8 MB OPI PSRAM, 240 MHz) with an OV5640 camera.
+- Embedded: Arduino-ESP32 3.3.8 / ESP-IDF 5.5, `TensorFlowLite_ESP32` library.
+- Training: Google Colab (TensorFlow 2.20.0, Python 3.12, NVIDIA Tesla T4).
+- Frontend: Python 3 with `ai-edge-litert` and OpenCV.
+
+## Layout
+
+File and folder names are in Portuguese:
+
+    firmware_esp32/        code that runs on the board: Arduino sketch, INT8 model header, partition table
+    frontend/              local web app for the demo (image, video and real-time tabs)
+    modelo_treinamento/    Colab notebook: training, evaluation and export
+    relatorio/             final report in LaTeX and PDF, and the scripts that generate its figures
+    slides/                presentation
+    imagens_teste/         test images
+    videos_teste/          test video
+    docs/                  assignment statement and figures
 
 ## Links
-- Notebook de treino (Colab): https://colab.research.google.com/drive/1DE-1luzYAd5wMEtShC5QgKr9YezZuzg7
-- Base de dados: *Brazil Plates Detector* (Roboflow, CC BY 4.0)
-- Enunciado: [`docs/enunciado_trabalho.pdf`](docs/enunciado_trabalho.pdf)
 
+- Training notebook (Colab): https://colab.research.google.com/drive/1DE-1luzYAd5wMEtShC5QgKr9YezZuzg7
+- Datasets: Brazil Plates Detector (Roboflow, CC BY 4.0) and a set provided by the professor.
